@@ -1,0 +1,1 @@
+spot check a few more variables from 2020 raw plumbing data. find a few census tracts on other native American reservations and then somewhat randomly pick census tracts (10 in total, 3 being on reservations, 3 in urban areas, and 4 in non urban areas in other states). See if the decimal point changes in all ten makes sense.).  

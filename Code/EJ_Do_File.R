@@ -40,6 +40,8 @@ df_crb <- read_xlsx("Raw_Data/Tracts_50inCRB.xlsx", #changed since 5/16 w/ more 
                     sheet = "Sheet1")
 df_re <- read_xlsx("Raw_Data/Race&Ethnicity/ACSDT5Y2019.B03002-Data.xlsx",
                    sheet = "Sheet1")
+df_hh <- read_xlsx("Raw_Data/Households/ACSDT5Y2019.B25001-Data.xlsx",
+                   sheet = "Sheet1")
 
 # ---- Data Cleaning ----
 # rename census tract variable
@@ -218,6 +220,15 @@ df_rural <- df_rural %>%
 
 
 
+
+
+
+
+# ---- Converting Plumb variable to percent ----
+df <- df %>% 
+  mutate(no_plumb_pct = 100*no_plumb)
+
+
 # ---- Summary Statistics ----
 sumstats <- df %>% 
   summarise(green_min = min(imperv_surface_pct),
@@ -225,11 +236,11 @@ sumstats <- df %>%
             green_med = median(imperv_surface_pct),
             green_max = max(imperv_surface_pct),
             green_sd = sd(imperv_surface_pct),
-            plumb_min = min(no_plumb),
-            plumb_mean = mean(no_plumb),
-            plumb_med = median(no_plumb),
-            plumb_max = max(no_plumb),
-            plumb_sd = sd(no_plumb),
+            plumb_min = min(no_plumb_pct),
+            plumb_mean = mean(no_plumb_pct),
+            plumb_med = median(no_plumb_pct),
+            plumb_max = max(no_plumb_pct),
+            plumb_sd = sd(no_plumb_pct),
             ust_min = min(leak_ust),
             ust_mean = mean(leak_ust),
             ust_med = median(leak_ust),
@@ -360,12 +371,16 @@ sumstats_long <- sumstats %>%
 #exporting to excel
 write_xlsx(sumstats_long, path = "Output/sumstats_50above_5-21.xlsx")
 
+# exploring plumbing variable
+df_plumb <- df %>% 
+  mutate(plumb_dec = no_plumb/100)
+
 # ---- Correlation Matrix ----
 df_corr <- df %>% 
   rename(`Lack Green Space` = "imperv_surface_pct",
-         `Incomplete Plumbing` = "no_plumb",
+         `IHWA` = "no_plumb",
          `Leaky UST` = "leak_ust",
-         `PM2 in Air` = "pm2",
+         `DPIA` = "pm2",
          Hispanic = "hisp_wnw_pct",
          `White (Non-Hisp)` = "white_nh_pct",
          `American Indian (Non-Hisp)` = "ind_nh_pct",
@@ -375,8 +390,8 @@ df_corr <- df %>%
          `Population Density` = "pop_dens") %>% 
   select("Hispanic",`American Indian (Non-Hisp)`,`Black (Non-Hisp)`,`White (Non-Hisp)`,
          `Mean Income`,`No HS Degree`,
-         `Lack Green Space`,`Incomplete Plumbing`,`Leaky UST`,
-         `PM2 in Air`,
+         `Lack Green Space`,`IHWA`,`Leaky UST`,
+         `DPIA`,
          `Population Density`)
 
 #creating correlation matrix (running with no grouping variables) @ tract level
@@ -385,7 +400,6 @@ head(corr[, 1:6])
 
 #Visualizing
 ggcorrplot(corr,
-           p.mat = p.mat,
            lab = TRUE,
            type = "lower",
            outline.color = "white",
@@ -408,6 +422,215 @@ df_percent_race <- df %>%
          pct_other = total_other/total_pop)
 
 write_xlsx(df_percent_race,"output/race_percents.xlsx")
+
+# Plumbing percentages (Updated 9/2)
+df_hh <- df_hh %>% 
+  rename(GEOID10 = "GEO_ID")
+
+#fixing geo id format 
+df_hh$GEOID10 <- substr(df_hh$GEOID10,start = 10,stop = nchar(df_hh$GEOID10))
+
+df_plumb <- merge(df,df_hh,by="GEOID10")
+
+df_plumb <- df_plumb %>% 
+  mutate(no_plumb_hh = B25001_001E * (no_plumb))
+
+## 7-4 Additions: Creating percentages of nonwhite based on counts, categorizing, and sumstats
+df_nw <- df %>% 
+  mutate(ct_nw = black_nh+hisp_wnw+ind_nh) %>% 
+  mutate(pct_nw = ct_nw/population) %>% 
+  mutate(pct_nw = ifelse(is.na(pct_nw), 0, pct_nw)) %>% 
+  mutate(nw_categories = case_when(pct_nw <= .11 ~  "0.00 - 0.11",
+                                   pct_nw > .11 & pct_nw <= .24 ~ "0.12 - 0.24",
+                                   pct_nw > .24 & pct_nw <= .40 ~ "0.25 - 0.40",
+                                   pct_nw > .40 & pct_nw <= .62 ~ "0.41 - 0.62",
+                                   pct_nw > .62 ~ "0.63 - 1.00"))
+
+df_11 <- df_nw %>% 
+  filter(nw_categories == "0.00 - 0.11")
+# 939 obs
+
+df_24 <- df_nw %>% 
+  filter(nw_categories == "0.12 - 0.24")
+# 1754 obs
+
+df_40 <- df_nw %>% 
+  filter(nw_categories == "0.25 - 0.40")
+# 1488 obs
+
+df_62 <- df_nw %>% 
+  filter(nw_categories == "0.41 - 0.62")
+# 1377 obs
+
+df_100 <- df_nw %>% 
+  filter(nw_categories == "0.63 - 1.00")
+# 2198 obs
+
+sumstats_11 <- df_11 %>% 
+  summarise(green_min = min(imperv_surface_pct),
+            green_mean = mean(imperv_surface_pct),
+            green_med = median(imperv_surface_pct),
+            green_max = max(imperv_surface_pct),
+            green_sd = sd(imperv_surface_pct),
+            plumb_min = min(no_plumb),
+            plumb_mean = mean(no_plumb),
+            plumb_med = median(no_plumb),
+            plumb_max = max(no_plumb),
+            plumb_sd = sd(no_plumb),
+            ust_min = min(leak_ust),
+            ust_mean = mean(leak_ust),
+            ust_med = median(leak_ust),
+            ust_max = max(leak_ust),
+            ust_sd = sd(leak_ust),
+            pm2_min = min(pm2),
+            pm2_mean = mean(pm2),
+            pm2_med = median(pm2),
+            pm2_max = max(pm2),
+            pm2_sd = sd(pm2),
+            hs_min = min(no_hs_deg),
+            hs_mean = mean(no_hs_deg),
+            hs_med = median(no_hs_deg),
+            hs_max = max(no_hs_deg),
+            hs_sd = sd(no_hs_deg),
+            inc_min = min(Mean_HH_Income),
+            inc_mean = mean(Mean_HH_Income),
+            inc_med = median(Mean_HH_Income),
+            inc_max = max(Mean_HH_Income),
+            inc_sd = sd(Mean_HH_Income))
+
+sumstats_24 <- df_24 %>% 
+  summarise(green_min = min(imperv_surface_pct),
+            green_mean = mean(imperv_surface_pct),
+            green_med = median(imperv_surface_pct),
+            green_max = max(imperv_surface_pct),
+            green_sd = sd(imperv_surface_pct),
+            plumb_min = min(no_plumb),
+            plumb_mean = mean(no_plumb),
+            plumb_med = median(no_plumb),
+            plumb_max = max(no_plumb),
+            plumb_sd = sd(no_plumb),
+            ust_min = min(leak_ust),
+            ust_mean = mean(leak_ust),
+            ust_med = median(leak_ust),
+            ust_max = max(leak_ust),
+            ust_sd = sd(leak_ust),
+            pm2_min = min(pm2),
+            pm2_mean = mean(pm2),
+            pm2_med = median(pm2),
+            pm2_max = max(pm2),
+            pm2_sd = sd(pm2),
+            hs_min = min(no_hs_deg),
+            hs_mean = mean(no_hs_deg),
+            hs_med = median(no_hs_deg),
+            hs_max = max(no_hs_deg),
+            hs_sd = sd(no_hs_deg),
+            inc_min = min(Mean_HH_Income),
+            inc_mean = mean(Mean_HH_Income),
+            inc_med = median(Mean_HH_Income),
+            inc_max = max(Mean_HH_Income),
+            inc_sd = sd(Mean_HH_Income))
+
+sumstats_40 <- df_40 %>% 
+  summarise(green_min = min(imperv_surface_pct),
+            green_mean = mean(imperv_surface_pct),
+            green_med = median(imperv_surface_pct),
+            green_max = max(imperv_surface_pct),
+            green_sd = sd(imperv_surface_pct),
+            plumb_min = min(no_plumb),
+            plumb_mean = mean(no_plumb),
+            plumb_med = median(no_plumb),
+            plumb_max = max(no_plumb),
+            plumb_sd = sd(no_plumb),
+            ust_min = min(leak_ust),
+            ust_mean = mean(leak_ust),
+            ust_med = median(leak_ust),
+            ust_max = max(leak_ust),
+            ust_sd = sd(leak_ust),
+            pm2_min = min(pm2),
+            pm2_mean = mean(pm2),
+            pm2_med = median(pm2),
+            pm2_max = max(pm2),
+            pm2_sd = sd(pm2),
+            hs_min = min(no_hs_deg),
+            hs_mean = mean(no_hs_deg),
+            hs_med = median(no_hs_deg),
+            hs_max = max(no_hs_deg),
+            hs_sd = sd(no_hs_deg),
+            inc_min = min(Mean_HH_Income),
+            inc_mean = mean(Mean_HH_Income),
+            inc_med = median(Mean_HH_Income),
+            inc_max = max(Mean_HH_Income),
+            inc_sd = sd(Mean_HH_Income))
+
+sumstats_62 <- df_62 %>% 
+  summarise(green_min = min(imperv_surface_pct),
+            green_mean = mean(imperv_surface_pct),
+            green_med = median(imperv_surface_pct),
+            green_max = max(imperv_surface_pct),
+            green_sd = sd(imperv_surface_pct),
+            plumb_min = min(no_plumb),
+            plumb_mean = mean(no_plumb),
+            plumb_med = median(no_plumb),
+            plumb_max = max(no_plumb),
+            plumb_sd = sd(no_plumb),
+            ust_min = min(leak_ust),
+            ust_mean = mean(leak_ust),
+            ust_med = median(leak_ust),
+            ust_max = max(leak_ust),
+            ust_sd = sd(leak_ust),
+            pm2_min = min(pm2),
+            pm2_mean = mean(pm2),
+            pm2_med = median(pm2),
+            pm2_max = max(pm2),
+            pm2_sd = sd(pm2),
+            hs_min = min(no_hs_deg),
+            hs_mean = mean(no_hs_deg),
+            hs_med = median(no_hs_deg),
+            hs_max = max(no_hs_deg),
+            hs_sd = sd(no_hs_deg),
+            inc_min = min(Mean_HH_Income),
+            inc_mean = mean(Mean_HH_Income),
+            inc_med = median(Mean_HH_Income),
+            inc_max = max(Mean_HH_Income),
+            inc_sd = sd(Mean_HH_Income))
+
+sumstats_100 <- df_100 %>% 
+  summarise(green_min = min(imperv_surface_pct),
+            green_mean = mean(imperv_surface_pct),
+            green_med = median(imperv_surface_pct),
+            green_max = max(imperv_surface_pct),
+            green_sd = sd(imperv_surface_pct),
+            plumb_min = min(no_plumb),
+            plumb_mean = mean(no_plumb),
+            plumb_med = median(no_plumb),
+            plumb_max = max(no_plumb),
+            plumb_sd = sd(no_plumb),
+            ust_min = min(leak_ust),
+            ust_mean = mean(leak_ust),
+            ust_med = median(leak_ust),
+            ust_max = max(leak_ust),
+            ust_sd = sd(leak_ust),
+            pm2_min = min(pm2),
+            pm2_mean = mean(pm2),
+            pm2_med = median(pm2),
+            pm2_max = max(pm2),
+            pm2_sd = sd(pm2),
+            hs_min = min(no_hs_deg),
+            hs_mean = mean(no_hs_deg),
+            hs_med = median(no_hs_deg),
+            hs_max = max(no_hs_deg),
+            hs_sd = sd(no_hs_deg),
+            inc_min = min(Mean_HH_Income),
+            inc_mean = mean(Mean_HH_Income),
+            inc_med = median(Mean_HH_Income),
+            inc_max = max(Mean_HH_Income),
+            inc_sd = sd(Mean_HH_Income))
+
+write_xlsx(sumstats_11, "nw_sumstats_11.xlsx")
+write_xlsx(sumstats_24, "nw_sumstats_24.xlsx")
+write_xlsx(sumstats_40, "nw_sumstats_40.xlsx")
+write_xlsx(sumstats_62, "nw_sumstats_62.xlsx")
+write_xlsx(sumstats_100, "nw_sumstats_100.xlsx")
 
 # for subsets of top and bottom 20% pop density
 df_percent_race_top20 <- df_top20 %>% 
@@ -1403,6 +1626,7 @@ bptest(pm2_poor1)
 pm2_poor1_se <- coeftest(pm2_poor1, vcov = vcovHC(pm2_poor1, type = "HC3"))
 coeftest(pm2_poor1, vcov = vcovHC(pm2_poor1, type = "HC3"))
 
+
 # ---- Plot of models ----
 #Green & pm2 rural subset comparisons (no poor dummy)
 plot_models(green_top25, green_bottom30,
@@ -1725,7 +1949,7 @@ ggplot(coef_data, aes(x = mean, y = label)) +
   geom_vline(xintercept = 0, linetype = "dashed", color = "gray") +  # Zero reference line
   geom_text(aes(label = label_with_stars, x = mean, y = label), vjust = -1.35, hjust = -0.21, size = 5, color = "black") +  # Labels with stars
   labs(x = "Coefficient Estimate", y = "Variable",
-       title = "Dependent Variable: PM2.5 in the Air") +
+       title = "Dependent Variable: DPIA") +
   theme_minimal() +
   theme(axis.text.y = element_text(hjust = 0, size = 12),  # Adjust y-axis label alignment and size
         axis.text.x = element_text(size = 12),             # Adjust x-axis text size
@@ -1881,7 +2105,7 @@ ggplot(coef_data, aes(x = mean, y = label)) +
   geom_vline(xintercept = 0, linetype = "dashed", color = "gray") +  # Zero reference line
   geom_text(aes(label = label_with_stars, x = mean, y = label), vjust = -1.35, hjust = -0.21, size = 5, color = "black") +  # Labels with stars
   labs(x = "Coefficient Estimate", y = "Variable",
-       title = "Dependent Variable: Incomplete Plumbing") +
+       title = "Dependent Variable: IHWA") +
   theme_minimal() +
   theme(axis.text.y = element_text(hjust = 0, size = 12),  # Adjust y-axis label alignment and size
         axis.text.x = element_text(size = 12),             # Adjust x-axis text size
